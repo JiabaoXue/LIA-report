@@ -1,0 +1,911 @@
+#include <IRremote.h> 
+
+#include <Servo.h> 
+
+#include <Adafruit_NeoPixel.h> 
+
+ 
+ 
+
+// WS2812B setup 
+
+#define LED_PIN 4          // The pin on the Arduino where the LED is connected 
+
+#define NUM_LEDS 1         // Number of LEDs in the strip 
+
+// Create a strip object that we can control 
+
+Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);   
+
+void setLEDColor(uint8_t r, uint8_t g, uint8_t b) { // Function to set the color of the LED 
+
+  // Go through each LED one by one 
+
+  for(int i = 0; i < NUM_LEDS; i++) { 
+
+    strip.setPixelColor(i, strip.Color(r, g, b)); // Change this LED to the color we want 
+
+  } 
+
+  strip.show(); // Make the LED actually light up with the new color 
+
+} 
+
+ 
+ 
+ 
+
+//  IR setup  
+
+const int RECV_PIN = 9; 
+
+IRrecv irrecv(RECV_PIN); 
+
+decode_results results; // stores the hex code  
+
+ 
+ 
+
+#define IR_STOP 0xFF02FD 
+
+#define IR_1    0xFF6897 
+
+#define IR_2    0xFF9867 
+
+#define IR_3    0xFFB04F 
+
+#define IR_4    0xFF30CF 
+
+#define IR_FORWARD    0xFF629D   
+
+#define IR_BACKWARD   0xFFA857   
+
+#define IR_LEFT       0xFF22DD   
+
+#define IR_RIGHT      0xFFC23D   
+
+#define IR_SPEED_UP   0xFF42BD   
+
+#define IR_SPEED_DOWN 0xFF52AD   
+
+ 
+ 
+
+// Motor pins 
+
+const int STBY = 3; 
+
+const int PWMA = 5; 
+
+const int AIN1 = 8; 
+
+const int PWMB = 6; 
+
+const int BIN1 = 7; 
+
+ 
+ 
+
+// mode selector 
+
+int currentProgram = 0; 
+
+ 
+ 
+
+// speed for each mode 
+
+int speedValue1 = 120; 
+
+int speedValue2 = 120; 
+
+int speedValue3 = 70; 
+
+int speedValue4 = 120; 
+
+ 
+ 
+
+Servo myservo; 
+
+ 
+ 
+
+// Time variables 
+
+unsigned long lastCommandTime = 0; //remembers the last time a button was pressed  
+
+unsigned long lastMovementCommand = 0; //remembers which button was last pressed  
+
+ 
+ 
+
+//  Shared motor functions  
+
+void goForward(int speed) { 
+
+  digitalWrite(STBY,HIGH); // Turn the motors on 
+
+  digitalWrite(AIN1, HIGH); // Right motor forward 
+
+  analogWrite(PWMA, speed); // Right motor speed 
+
+  digitalWrite(BIN1, HIGH); // Left motor forward 
+
+  analogWrite(PWMB, speed); // Left motor speed 
+
+} 
+
+void goBackward(int speed) { 
+
+  digitalWrite(STBY,HIGH); 
+
+  digitalWrite(AIN1,LOW); 
+
+  analogWrite(PWMA,speed); 
+
+  digitalWrite(BIN1,LOW); 
+
+  analogWrite(PWMB,speed); 
+
+} 
+
+void turnCarLeft(int speed) { 
+
+  digitalWrite(STBY,HIGH); 
+
+  digitalWrite(AIN1,LOW); 
+
+  analogWrite(PWMA,speed); 
+
+  digitalWrite(BIN1,HIGH); 
+
+  analogWrite(PWMB,speed); 
+
+} 
+
+void turnCarRight(int speed) { 
+
+  digitalWrite(STBY,HIGH); 
+
+  digitalWrite(AIN1,HIGH); 
+
+  analogWrite(PWMA,speed); 
+
+  digitalWrite(BIN1,LOW); 
+
+  analogWrite(PWMB,speed); 
+
+} 
+
+void speedUp() {  
+
+  speedValue2 += 20; // Make the car faster 
+
+  if (speedValue2 > 255) speedValue2 = 255; // Limit max speed 
+
+} 
+
+void speedDown() {  
+
+  speedValue2 -= 20; // Make the car slower 
+
+  if (speedValue2 < 0) speedValue2 = 0; // Limit min speed 
+
+} 
+
+void stopCar() {  
+
+  analogWrite(PWMA, 0); // Stop right motor 
+
+  analogWrite(PWMB, 0); // Stop left motor 
+
+} 
+
+ 
+ 
+ 
+
+// Program 1 (Victory Lap) 
+
+// The car will drive in a little race track pattern 
+
+void runProgram1() { 
+
+ 
+ 
+
+  setLEDColor(255, 0, 0);          // Turn the LED red so we know Program 1 is running 
+
+ 
+ 
+
+  //  First long forward (8 seconds)  
+
+  goForward(speedValue1);          // Start moving forward 
+
+  for (int i = 0; i < 800; i++) { // Loop 800 times (10ms each = 8 seconds) 
+
+    delay(10);                     // Wait a tiny bit 
+
+    if (currentProgram != 1) {     // If we change the program, stop everything 
+
+      stopCar();                    // Stop the car immediately 
+
+      return;                       // Exit this function so we can start another program 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop after moving forward 
+
+  delay(500);                        // Wait half a second 
+
+ 
+ 
+
+  //  First turn left (0.40 seconds)  
+
+  turnCarLeft(speedValue1);         // Start turning left 
+
+  for (int i = 0; i < 40; i++) {   // Loop 40 times (10ms each = 0.40 seconds) 
+
+    delay(10);                      // Wait a tiny bit 
+
+    if (currentProgram != 1) {      // If we change the program, stop turning 
+
+      stopCar();                     // Stop the car immediately 
+
+      return;                        // Exit this function 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop turning left 
+
+  delay(500);                        // Wait half a second 
+
+ 
+ 
+
+  //  Short forward (4 seconds)  
+
+  goForward(speedValue1);           // Start moving forward a little 
+
+  for (int i = 0; i < 400; i++) {  // Loop 400 times (10ms each = 4 seconds) 
+
+    delay(10);                      // Wait a tiny bit 
+
+    if (currentProgram != 1) {      // If program changes, stop 
+
+      stopCar();                     // Stop the car 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop after moving 
+
+  delay(500);                        // Wait half a second 
+
+ 
+ 
+
+  //  Turn left (0.45 seconds)  
+
+  turnCarLeft(speedValue1);         // Turn left 
+
+  for (int i = 0; i < 40; i++) {   // Loop 40 times (0.4 seconds) 
+
+    delay(10);                      // Wait a tiny bit 
+
+    if (currentProgram != 1) {      // If program changes, stop 
+
+      stopCar();                     // Stop 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop turning 
+
+  delay(500);                        // Wait half a second 
+
+ 
+ 
+
+  //  Second long forward (8 seconds)  
+
+  goForward(speedValue1);           // Move forward again 
+
+  for (int i = 0; i < 800; i++) {  // Loop 800 times (8 seconds) 
+
+    delay(10);                      // Wait 
+
+    if (currentProgram != 1) {      // Stop if program changes 
+
+      stopCar();                     // Stop the car 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop after moving 
+
+  delay(500);                        // Wait 
+
+ 
+ 
+
+  //  Turn left (0.45 seconds)  
+
+  turnCarLeft(speedValue1);         // Turn left 
+
+  for (int i = 0; i < 40; i++) {   // Loop 40 times 
+
+    delay(10);                      // Wait a tiny bit 
+
+    if (currentProgram != 1) {      // Stop if program changes 
+
+      stopCar();                     // Stop 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop turning 
+
+  delay(500);                        // Wait 
+
+ 
+ 
+
+  //  Short forward (4 seconds)  
+
+  goForward(speedValue1);           // Move forward a little 
+
+  for (int i = 0; i < 400; i++) {  // Loop 400 times 
+
+    delay(10);                      // Wait a tiny bit 
+
+    if (currentProgram != 1) {      // Stop if program changes 
+
+      stopCar();                     // Stop 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop after moving 
+
+  delay(500);                        // Wait 
+
+ 
+ 
+
+  //  Final turn left (0.45 seconds)  
+
+  turnCarLeft(speedValue1);         // Turn left 
+
+  for (int i = 0; i < 40; i++) {   // Loop 40 times 
+
+    delay(10);                      // Wait 
+
+    if (currentProgram != 1) {      // Stop if program changes 
+
+      stopCar();                     // Stop 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop turning 
+
+  delay(500);                        // Wait 
+
+ 
+ 
+
+  //  Final forward (1 second)  
+
+  goForward(speedValue1);           // Move forward just a little 
+
+  for (int i = 0; i < 100; i++) {  // Loop 100 times (1 second) 
+
+    delay(10);                      // Wait a tiny bit 
+
+    if (currentProgram != 1) {      // Stop if program changes 
+
+      stopCar();                     // Stop 
+
+      return;                        // Exit 
+
+    } 
+
+  } 
+
+  stopCar();                        // Stop at the end 
+
+  delay(500);                        // Wait 
+
+  // The car stops here and waits for a new program 
+
+} 
+
+ 
+ 
+ 
+ 
+
+void runProgram2(unsigned long code) { 
+
+  setLEDColor(0,255,0); // Make the LED green so we know Program 2 is running 
+
+ 
+ 
+
+  if (code == 0xFFFFFFFF) code = lastMovementCommand; // If the button is held, use the last button pressed 
+
+ 
+ 
+
+  switch (code) { 
+
+    case IR_FORWARD:  
+
+      goForward(speedValue2); // Move the car forward 
+
+      lastMovementCommand = IR_FORWARD; // Remember we pressed forward 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+ 
+ 
+
+    case IR_BACKWARD:  
+
+      goBackward(speedValue2); // Move the car backward 
+
+      lastMovementCommand = IR_BACKWARD; // Remember we pressed backward 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+ 
+ 
+
+    case IR_LEFT:  
+
+      turnCarLeft(speedValue2); // Turn the car left 
+
+      lastMovementCommand = IR_LEFT; // Remember we pressed left 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+ 
+ 
+
+    case IR_RIGHT:  
+
+      turnCarRight(speedValue2); // Turn the car right 
+
+      lastMovementCommand = IR_RIGHT; // Remember we pressed right 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+ 
+ 
+
+    case IR_STOP:  
+
+      stopCar(); // Stop the car 
+
+      lastMovementCommand = IR_STOP; // Remember we pressed stop 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+ 
+ 
+
+    case IR_SPEED_UP:  
+
+      speedUp(); // Make the car go faster 
+
+      lastMovementCommand = IR_STOP; // No movement button now 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+ 
+ 
+
+    case IR_SPEED_DOWN:  
+
+      speedDown(); // Make the car go slower 
+
+      lastMovementCommand = IR_STOP; // No movement button now 
+
+      lastCommandTime = millis(); // Remember the time we pressed it 
+
+      break; 
+
+  } 
+
+ 
+ 
+
+  if (millis() - lastCommandTime > 200) stopCar(); // Stop if no button is pressed for 0.2 seconds 
+
+} 
+
+ 
+ 
+ 
+
+const int SENSOR_RIGHT = A0; // Right line sensor is connected to pin A0 
+
+const int SENSOR_MIDDLE = A1; // Middle line sensor is connected to pin A1 
+
+const int SENSOR_LEFT = A2; // Left line sensor is connected to pin A2 
+
+const int TrackingDetection_Left_S = 500; // Left sensor start value for detecting line 
+
+const int TrackingDetection_Left_E = 1000; // Left sensor end value for detecting line 
+
+const int TrackingDetection_Middle_S = 500; // Middle sensor start value for detecting line 
+
+const int TrackingDetection_Middle_E = 1000; // Middle sensor end value for detecting line 
+
+const int TrackingDetection_Right_S = 500; // Right sensor start value for detecting line 
+
+const int TrackingDetection_Right_E = 1000; // Right sensor end value for detecting line 
+
+const int TrackingDetection_V = 1000; // Value to know the sensor is in the air, not on the line 
+
+ 
+ 
+ 
+
+void runProgram3() { 
+
+  setLEDColor(0, 0, 255); // Make the LED blue to show line tracking is active 
+
+  int l = analogRead(SENSOR_LEFT); // Read the left sensor value 
+
+  int m = analogRead(SENSOR_MIDDLE); // Read the middle sensor value 
+
+  int r = analogRead(SENSOR_RIGHT); // Read the right sensor value 
+
+  // If all sensors see nothing (air), stop the car 
+
+    if (m >= TrackingDetection_Middle_S && m <= TrackingDetection_Middle_E) { 
+
+      goForward(speedValue3); 
+
+      break; // Exit the turning loop 
+
+    } 
+
+  // Check if each sensor is on the line 
+
+  bool leftOnLine = (l >= TrackingDetection_Left_S && l <= TrackingDetection_Left_E); // Is left on line? 
+
+  bool middleOnLine = (m >= TrackingDetection_Middle_S && m <= TrackingDetection_Middle_E); // Is middle on line? 
+
+  bool rightOnLine = (r >= TrackingDetection_Right_S && r <= TrackingDetection_Right_E); // Is right on line? 
+
+  // Decide how the car should move based on sensor values 
+
+  if (middleOnLine) { 
+
+    goForward(speedValue3); // Go straight if middle is on line 
+
+  }  
+
+  else if (leftOnLine && !rightOnLine) { 
+
+    turnCarLeft(speedValue3); // Turn left if only left sensor sees the line 
+
+  }  
+
+  else if (rightOnLine && !leftOnLine) { 
+
+    turnCarRight(speedValue3); // Turn right if only right sensor sees the line 
+
+  }  
+
+  else { 
+
+        turnCarRight(speedValue3); // turn right to find if there's a line  
+
+   
+
+  } 
+
+} 
+
+ 
+ 
+ 
+
+#define trigPin 13 // Pin that sends out the ultrasonic signal 
+
+#define echoPin 12 // Pin that receives the ultrasonic signal 
+
+#define servoPin 10 // Pin connected to the servo 
+
+ 
+ 
+
+long duration; // Store the time it takes for the sound to bounce back 
+
+float distance; // Store the distance in centimeters 
+
+ 
+ 
+
+// Function to measure the distance in front of the car 
+
+float getDistance() { 
+
+  digitalWrite(trigPin, LOW); // Make sure the trigger is off 
+
+  delayMicroseconds(2); // Wait a tiny bit 
+
+  digitalWrite(trigPin, HIGH); // Send out the sound pulse 
+
+  delayMicroseconds(10); // Wait 10 microseconds 
+
+  digitalWrite(trigPin, LOW); // Stop sending the pulse 
+
+  duration = pulseIn(echoPin, HIGH, 30000); // Measure how long it takes to come back 
+
+  if (duration == 0) return -1; // If nothing came back, return -1 
+
+  return duration * 0.0343 / 2; // Convert time to distance in cm 
+
+} 
+
+ 
+ 
+
+// Program 4: Obstacle Avoidance 
+
+void runProgram4() { 
+
+  setLEDColor(255, 255, 0); // Make the LED yellow to show obstacle program is active 
+
+ 
+ 
+
+  myservo.write(90); // Point servo straight forward 
+
+  delay(500); // Wait a tiny bit 
+
+  float forwardDist = getDistance(); // Measure distance in front 
+
+ 
+ 
+
+  if (forwardDist >= 25) { 
+
+    goForward(speedValue4); // If front is clear, move forward 
+
+  }  
+
+  else { 
+
+    stopCar(); // Stop because there is an obstacle 
+
+    myservo.write(180); // Turn servo to the left 
+
+    delay(500); // Wait a tiny bit 
+
+    float leftDist = getDistance(); // Measure distance to the left 
+
+ 
+ 
+
+    if (leftDist >= 25) { 
+
+      turnCarLeft(speedValue4); // Turn left if path is clear 
+
+      myservo.write(90); // Reset servo to front 
+
+      delay(500); // Wait a tiny bit 
+
+      goForward(speedValue4); // Move forward 
+
+    }  
+
+    else { 
+
+      myservo.write(0); // Turn servo to the right 
+
+      delay(500); // Wait a tiny bit 
+
+      float rightDist = getDistance(); // Measure distance to the right 
+
+ 
+ 
+
+      if (rightDist >= 25) { 
+
+        turnCarRight(speedValue4); // Turn right if path is clear 
+
+        myservo.write(90); // Reset servo to front 
+
+        delay(500); // Wait a tiny bit 
+
+        goForward(speedValue4); // Move forward 
+
+      }  
+
+      else { 
+
+        goBackward(speedValue4); // Move backward if no way forward 
+
+        delay(700); // Move backward for 0.7 seconds 
+
+        stopCar(); // Stop after moving back 
+
+        turnCarLeft(speedValue4); // Turn left 
+
+        turnCarLeft(speedValue4); // Turn left again (180 degree turn) 
+
+        myservo.write(90); // Reset servo to front 
+
+        delay(500); // Wait a tiny bit 
+
+      } 
+
+    } 
+
+  } 
+
+} 
+
+ 
+ 
+ 
+
+void setup() { 
+
+  Serial.begin(9600); // Start talking to the computer so we can see messages 
+
+  irrecv.enableIRIn(); // Turn on the IR remote receiver so it can read buttons 
+
+  pinMode(STBY, OUTPUT); // Set the motor standby pin as output 
+
+  digitalWrite(STBY, HIGH); // Turn on the motors so they can move 
+
+  pinMode(AIN1, OUTPUT); // Set motor A direction pin as output 
+
+  pinMode(PWMA, OUTPUT); // Set motor A speed pin as output 
+
+  pinMode(BIN1, OUTPUT); // Set motor B direction pin as output 
+
+  pinMode(PWMB, OUTPUT); // Set motor B speed pin as output 
+
+  pinMode(SENSOR_RIGHT, INPUT); // Right line sensor reads the line 
+
+  pinMode(SENSOR_MIDDLE, INPUT); // Middle line sensor reads the line 
+
+  pinMode(SENSOR_LEFT, INPUT); // Left line sensor reads the line 
+
+  pinMode(trigPin, OUTPUT); // Set ultrasonic trigger pin as output 
+
+  pinMode(echoPin, INPUT); // Set ultrasonic echo pin as input 
+
+  myservo.attach(servoPin); // Connect the servo to the board 
+
+  myservo.write(90); // Point the servo straight forward 
+
+  strip.begin(); // Turn on the LED strip 
+
+  strip.show(); // Show the current LED color (starts as off) 
+
+  stopCar(); // Make sure the car is not moving at the start 
+
+} 
+
+ 
+ 
+ 
+ 
+
+void loop() { 
+
+  unsigned long currentIRCode = 0; // Make a place to store the button we press 
+
+ 
+ 
+
+  if(irrecv.decode(&results)) { // If we pressed a button on the remote 
+
+    unsigned long code = results.value; // Get the code of the button 
+
+    Serial.println(code, HEX); // Show the code on the computer screen in HEX 
+
+ 
+ 
+
+    if(code == IR_STOP) currentProgram = 0; // If we pressed STOP, stop the program 
+
+    if(code == IR_1) currentProgram = 1; // If we pressed 1, start program 1 
+
+    if(code == IR_2) currentProgram = 2; // If we pressed 2, start program 2 
+
+    if(code == IR_3) currentProgram = 3; // If we pressed 3, start program 3 
+
+    if(code == IR_4) currentProgram = 4; // If we pressed 4, start program 4 
+
+ 
+ 
+
+    currentIRCode = code; // Remember which button we just pressed 
+
+    irrecv.resume(); // Tell the remote we are ready for the next button 
+
+    stopCar(); // Stop the car immediately when changing programs 
+
+  } 
+
+ 
+ 
+ 
+
+  switch(currentProgram){ 
+
+    case 1: runProgram1();  
+
+    break; 
+
+    case 2: runProgram2(currentIRCode);  
+
+    break; 
+
+    case 3: runProgram3();  
+
+    break; 
+
+    case 4: runProgram4();  
+
+    break; 
+
+    default: stopCar(); setLEDColor(0,0,0);  
+
+    break; 
+
+  } 
+
+} 
+
+ 
+ 
+
+ 
